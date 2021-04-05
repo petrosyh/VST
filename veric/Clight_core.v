@@ -24,6 +24,7 @@ Definition ef_deterministic (ef: external_function) : bool :=
   | EF_annot_val kind Text rg => true
   | EF_inline_asm text sg clob => false
   | EF_debug kind text targs => true
+  | EF_capture => false
   end.
 
 Axiom ef_deterministic_fun:

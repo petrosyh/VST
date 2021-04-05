@@ -188,7 +188,7 @@ Proof.
         specialize (H5 (i, co)).
         rewrite in_app in H5.
         specialize (H5 (or_intror (or_introl eq_refl))).
-        unfold is_true in H5.
+        unfold Datatypes.is_true in H5.
         rewrite Nat.leb_le in H5; simpl in H5.
         lia.
       * apply IHl0; auto.

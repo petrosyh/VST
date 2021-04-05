@@ -161,7 +161,7 @@ split; intro; try congruence.
 destruct H. rewrite H in H0 by auto. congruence.
 intro; subst.
 destruct H; try congruence.
-spec H1; auto. congruence.
+spec H1; auto. (* congruence. *)
 Qed.
 
 Lemma eqb_type_refl: forall a, eqb_type a a = true.

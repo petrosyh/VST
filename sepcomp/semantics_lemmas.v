@@ -138,6 +138,7 @@ split; intros.
       rewrite PMap.gss. apply Mem.setN_other. intros. lia.
     rewrite PMap.gss. apply Mem.setN_other. intros. lia.
   - rewrite PMap.gso; trivial.
+    + exploit Mem.concrete_storebytes; eauto. i. rewrite <- H1. ss.
 Qed.
 
 Lemma unch_on_loc_not_writable_trans m1 m2 m3
@@ -156,6 +157,11 @@ Proof.
        apply Q2; trivial.
      intros N; apply H. apply F; trivial. eapply Mem.perm_valid_block; eassumption.
      apply Q1; trivial. eapply Mem.perm_valid_block; eassumption.
+  - eapply unchanged_concrete0; eauto.
+    clear - H Q0. unfold Mem.valid_block in *.
+    rewrite Pos.le_lteq in Q0. des.
+    + eapply Plt_trans; eauto.
+    + rewrite Q0 in H. auto.
 Qed.
 
 Theorem loc_not_writable_preserve:

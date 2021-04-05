@@ -672,12 +672,15 @@ Proof. intros.
 pose proof (mapsto_valid_access_wr _ _ _ wsh _ _ _ MAPSTO).
 apply (mkmem
   (PMap.set b (setN (encode_val ch v') ofs (PMap.get b (mem_contents (m_dry jm))))
-    (mem_contents (m_dry jm))) (mem_access (m_dry jm))
+    (mem_contents (m_dry jm))) (mem_access (m_dry jm)) (mem_concrete (m_dry jm))
   (nextblock (m_dry jm)) (access_max (m_dry jm)) (nextblock_noaccess (m_dry jm))).
 intros. destruct jm; simpl.
   rewrite PMap.gsspec. destruct (peq b0 b).
   rewrite setN_default. apply contents_default.
   apply contents_default.
+  { eapply nextblocks_logical. }
+  { eapply addresses_in_range. }
+  { eapply no_concrete_overlap. }
 Defined.
 
 Lemma mapsto_can_store_property: forall (ch:memory_chunk) v sh (wsh: writable0_share sh) b ofs jm v'

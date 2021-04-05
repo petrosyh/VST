@@ -48,6 +48,7 @@ split; intros.
 auto.
 solve[apply (H1 b ofs k p (H3 b ofs H)); auto].
 solve[apply (H2 b ofs); auto].
+auto.
 Qed.
 
 Lemma mem_unchanged_on_sub_strong: forall (P Q: block -> BinInt.Z -> Prop) m m',
@@ -60,6 +61,7 @@ split; intros. auto.
 solve[apply (H1 b ofs k p (H3 b ofs H0 H) H0)].
 apply (H2 b ofs); auto. apply H3; auto.
 solve[eapply Mem.perm_valid_block; eauto].
+auto.
 Qed.
 
 Lemma inject_separated_same_meminj: forall j m m',
@@ -111,6 +113,11 @@ Proof.
     - eapply Mem.perm_drop_3; try eassumption. left; trivial.
   + right. intros N. elim H2; clear H2.
     eapply Mem.perm_drop_4; eassumption.
+  + exploit Mem.concrete_drop. eapply H0. i.
+    exploit Mem.concrete_drop; eauto. i.
+    rewrite H, H3 in *.
+    eapply mext_concrete; eauto.
+    eapply Mem.drop_perm_valid_block_2; eauto.
 Qed.
 
 Lemma mem_inj_id_trans: forall m1 m2 (Inj12: Mem.mem_inj inject_id m1 m2) m3
@@ -159,6 +166,9 @@ Proof. intros. inv Ext12. inv Ext23.
   + right. intros N. elim H0; clear H0.
     specialize (Mem.mi_perm _ _ _ mext_inj b b 0 ofs Max Nonempty); intros.
     rewrite Zplus_0_r in H0; apply H0; trivial.
+  + i. eapply mext_concrete0.
+    { unfold Mem.valid_block in *. rewrite mext_next in *. auto. }
+    eapply mext_concrete; auto.
 Qed.
 
 Lemma memval_inject_id_refl: forall v, memval_inject inject_id v v.
@@ -176,6 +186,8 @@ Proof. intros.
      inv H.  rewrite Zplus_0_r. apply memval_inject_id_refl.
 (*perm_inv*)
   intros. left; trivial.
+(*concrete*)
+  auto.
 Qed.
 
 Lemma perm_decE:
@@ -345,6 +357,9 @@ destruct H.
   apply (unchanged_on_contents0 _ _ H3).
   apply unchanged_on_perm; try assumption.
   apply Mem.perm_valid_block in H4. assumption.
+  eapply Mem.unchanged_concrete; eauto.
+  { eapply Mem.valid_block_unchanged_on; eauto. }
+  eapply Mem.unchanged_concrete; eauto.
 Qed.
 
 Lemma matchOptE: forall {A} (a:option A) (P: A -> Prop),
@@ -847,6 +862,7 @@ Proof. intros.
       rewrite (Mem.storebytes_mem_contents _ _ _ _ _ H).
       destruct (eq_block b0 b); subst. rewrite PMap.gss; trivial.
       rewrite PMap.gso; trivial.
+      exploit Mem.concrete_storebytes; eauto. i. rewrite H2. auto.
     intros; simpl; trivial.
 
     remember (Mem.load ch m bb z) as u; symmetry in Hequ; destruct u; trivial.
@@ -861,6 +877,7 @@ Proof. intros.
       rewrite (Mem.storebytes_mem_contents _ _ _ _ _ H).
       destruct (eq_block b0 b); subst. rewrite PMap.gss; trivial.
       rewrite PMap.gso; trivial.
+      exploit Mem.concrete_storebytes; eauto. i. rewrite <- H2. auto.
     intros; simpl; trivial.
 Qed.
 
@@ -879,6 +896,7 @@ Proof. intros.
       rewrite (Mem.storebytes_mem_contents _ _ _ _ _ H).
       destruct (eq_block b0 b); subst. rewrite PMap.gss; trivial.
       rewrite PMap.gso; trivial.
+      exploit Mem.concrete_storebytes; eauto. i. rewrite H2. auto.
     intros; simpl; trivial.
 
     remember (Mem.loadbytes m bb z n) as u; symmetry in Hequ; destruct u; trivial.
@@ -893,6 +911,7 @@ Proof. intros.
       rewrite (Mem.storebytes_mem_contents _ _ _ _ _ H).
       destruct (eq_block b0 b); subst. rewrite PMap.gss; trivial.
       rewrite PMap.gso; trivial.
+      exploit Mem.concrete_storebytes; eauto. i. rewrite <- H2. auto.
     intros; simpl; trivial.
 Qed.
 
@@ -1578,6 +1597,7 @@ split; intros.
 destruct H; subst.
   elim NP. eapply Mem.perm_max.
   eapply Mem.perm_implies; try eassumption. apply perm_any_N.
+  admit "change mem_forward".
 Qed.
 
 Lemma unchanged_on_union:
@@ -1593,6 +1613,7 @@ Proof. intros.
     destruct (HPQ _ _ H).
       eapply HP; eassumption.
       eapply HQ; eassumption.
+    inv HP. eauto.
 Qed.
 
 Lemma unchanged_on_validblock: forall m m' (U V: Values.block -> Z -> Prop)
@@ -1604,6 +1625,7 @@ Lemma unchanged_on_validblock: forall m m' (U V: Values.block -> Z -> Prop)
        eapply unchanged_on_perm; try eassumption. eauto.
        eapply unchanged_on_contents; try eassumption.
        apply Mem.perm_valid_block in H0. eauto.
+   auto.
 Qed.
 
 Lemma unchanged_on_validblock_invariant: forall m m' U V
@@ -1639,6 +1661,7 @@ Lemma unchanged_on_perm_intersection: forall m m' U (Fwd: mem_forward m m'),
        split; trivial.
         eapply Mem.perm_implies. eapply Mem.perm_max; eassumption.
                apply perm_any_N.
+     inv Hyp. auto.
 Qed.
 
 Lemma unchanged_on_trans: forall m1 m2 m3 U
@@ -1657,6 +1680,9 @@ destruct U1 as [_ P1 V1]; destruct U2 as [_ P2 V2].
   rewrite (V2 _ _ H).
     apply V1; trivial.
   apply P1; trivial. eapply Mem.perm_valid_block; eassumption.
+  inv U2. eapply unchanged_concrete; eauto.
+  { admit "true". }
+  inv U1. eauto.
 Qed.
 
 (* Does not hold, since readonly refers to Cur permissions

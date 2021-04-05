@@ -600,7 +600,7 @@ Definition legal_alignas_obs: Type := bool.
 Fixpoint legal_alignas_type (la_env: PTree.t bool) t: bool :=
   (hardware_alignof ha_env t <=? alignof cenv t) &&
   match t with
-  | Tarray t' _ _ => (sizeof cenv t' mod alignof cenv t' =? 0) && legal_alignas_type la_env t'
+  | Tarray t' _ _ => (Z.eqb (sizeof cenv t' mod alignof cenv t') 0) && legal_alignas_type la_env t'
   | Tstruct id _ =>
       match la_env ! id with
       | Some la => la
@@ -630,7 +630,7 @@ Definition legal_alignas_env: PTree.t bool :=
   let l := composite_reorder.rebuild_composite_elements cenv in
   fold_right (fun (ic: positive * composite) (T0: PTree.t bool) => let (i, co) := ic in let T := T0 in PTree.set i (legal_alignas_composite T co) T) (PTree.empty _) l.
 
-Definition is_aligned_aux (b: bool) (ha: Z) (ofs: Z) := b && ((ofs mod ha) =? 0).
+Definition is_aligned_aux (b: bool) (ha: Z) (ofs: Z) := b && (Z.eqb (ofs mod ha) 0).
 
 End legal_alignas.
 
@@ -666,7 +666,7 @@ Lemma aux1: forall T co,
                 | By_nothing => false
                 end)
                (fun (la : bool) (t : type) (n : Z) (a0 : attr) =>
-                (hardware_alignof ha_env (Tarray t n a0) <=? alignof cenv (Tarray t n a0)) && ((sizeof cenv t mod alignof cenv t =? 0) && la))
+                (hardware_alignof ha_env (Tarray t n a0) <=? alignof cenv (Tarray t n a0)) && ((Z.eqb (sizeof cenv t mod alignof cenv t) 0) && la))
                (fun (la : bool) (id : ident) (a0 : attr) =>
                 (hardware_alignof ha_env (Tstruct id a0) <=? alignof cenv (Tstruct id a0)) && la)
                (fun (la : bool) (id : ident) (a0 : attr) =>
@@ -700,7 +700,7 @@ Lemma aux2:
            | By_nothing => false
            end)
           (fun (la : bool) (t : type) (n : Z) (a0 : attr) =>
-           (hardware_alignof ha_env (Tarray t n a0) <=? alignof cenv (Tarray t n a0)) && ((sizeof cenv t mod alignof cenv t =? 0) && la))
+           (hardware_alignof ha_env (Tarray t n a0) <=? alignof cenv (Tarray t n a0)) && ((Z.eqb (sizeof cenv t mod alignof cenv t) 0) && la))
           (fun (la : bool) (id : ident) (a0 : attr) =>
            (hardware_alignof ha_env (Tstruct id a0) <=? alignof cenv (Tstruct id a0)) && la)
           (fun (la : bool) (id : ident) (a0 : attr) =>
@@ -737,7 +737,7 @@ Proof.
                 | By_value _ => true
                 | _ => false
                 end)
-             (fun la t n a => (hardware_alignof ha_env (Tarray t n a) <=? alignof cenv (Tarray t n a)) && ((sizeof cenv t mod alignof cenv t =? 0) && la))
+             (fun la t n a => (hardware_alignof ha_env (Tarray t n a) <=? alignof cenv (Tarray t n a)) && ((Z.eqb (sizeof cenv t mod alignof cenv t) 0) && la))
              (fun la id a => (hardware_alignof ha_env (Tstruct id a) <=? alignof cenv (Tstruct id a)) && la)
              (fun la id a => (hardware_alignof ha_env (Tunion id a) <=? alignof cenv (Tunion id a)) && la)
              (fun _ =>
@@ -766,7 +766,7 @@ Proof.
                 | By_value _ => true
                 | _ => false
                 end)
-             (fun la t n a => (hardware_alignof ha_env (Tarray t n a) <=? alignof cenv (Tarray t n a)) && ((sizeof cenv t mod alignof cenv t =? 0) && la))
+             (fun la t n a => (hardware_alignof ha_env (Tarray t n a) <=? alignof cenv (Tarray t n a)) && ((Z.eqb (sizeof cenv t mod alignof cenv t) 0) && la))
              (fun la id a => (hardware_alignof ha_env (Tstruct id a) <=? alignof cenv (Tstruct id a)) && la)
              (fun la id a => (hardware_alignof ha_env (Tunion id a) <=? alignof cenv (Tunion id a)) && la)
              (fun _ =>
@@ -816,7 +816,7 @@ Proof.
   intros.
   unfold is_aligned, is_aligned_aux, legal_alignas_type, hardware_alignof in H.
   destruct H0 as [ch ?].
-  assert ((align_chunk ch <=? alignof cenv t) && true && (ofs mod align_chunk ch =? 0) = true) by
+  assert ((align_chunk ch <=? alignof cenv t) && true && (Z.eqb (ofs mod align_chunk ch) 0) = true) by
     (destruct t; try solve [inversion H0]; rewrite H0 in H; auto); clear H.
   autorewrite with align in H1.
   destruct H1 as [_ ?].
@@ -928,7 +928,7 @@ Definition legal_alignas_obs: Type := bool.
 
 Fixpoint legal_alignas_type (la_env: PTree.t bool) t: bool :=
   match t with
-  | Tarray t' _ _ => (sizeof cenv t' mod hardware_alignof ha_env t' =? 0) && legal_alignas_type la_env t'
+  | Tarray t' _ _ => (Z.eqb (sizeof cenv t' mod hardware_alignof ha_env t') 0) && legal_alignas_type la_env t'
   | Tstruct id _ =>
       match la_env ! id with
       | Some la => la
@@ -948,7 +948,7 @@ Fixpoint legal_alignas_type (la_env: PTree.t bool) t: bool :=
 Fixpoint legal_alignas_struct_members_rec (la_env: PTree.t bool) (m: members) (pos: Z): bool :=
   match m with
   | nil => true
-  | (_, t) :: m' => (align pos (alignof cenv t) mod hardware_alignof ha_env t =? 0) && (legal_alignas_type la_env t) && (legal_alignas_struct_members_rec la_env m' (align pos (alignof cenv t) + sizeof cenv t))
+  | (_, t) :: m' => (Z.eqb (align pos (alignof cenv t) mod hardware_alignof ha_env t) 0) && (legal_alignas_type la_env t) && (legal_alignas_struct_members_rec la_env m' (align pos (alignof cenv t) + sizeof cenv t))
   end.
 
 Fixpoint legal_alignas_union_members_rec (la_env: PTree.t bool) (m: members): bool :=
@@ -967,7 +967,7 @@ Definition legal_alignas_env: PTree.t bool :=
   let l := composite_reorder.rebuild_composite_elements cenv in
   fold_right (fun (ic: positive * composite) (T0: PTree.t bool) => let (i, co) := ic in let T := T0 in PTree.set i (legal_alignas_composite T co) T) (PTree.empty _) l.
 
-Definition is_aligned_aux (b: bool) (ha: Z) (ofs: Z) := b && ((ofs mod ha) =? 0).
+Definition is_aligned_aux (b: bool) (ha: Z) (ofs: Z) := b && (Z.eqb (ofs mod ha) 0).
 
 End legal_alignas.
 
@@ -990,7 +990,7 @@ Lemma aux1: forall T co,
          match l with
          | nil => true
          | (_, t, la) :: l' =>
-             (align pos (alignof cenv t) mod hardware_alignof ha_env t =? 0) &&
+             (Z.eqb (align pos (alignof cenv t) mod hardware_alignof ha_env t) 0) &&
              la && fm (align pos (alignof cenv t) + sizeof cenv t) l'
          end) 0
   | Union =>
@@ -1013,7 +1013,7 @@ Lemma aux1: forall T co,
            | By_nothing => false
            end)
           (fun (la : bool) (t : type) (_ : Z) (_ : attr) =>
-           (sizeof cenv t mod hardware_alignof ha_env t =? 0) && la)
+           (Z.eqb (sizeof cenv t mod hardware_alignof ha_env t) 0) && la)
           (fun (la : bool) (_ : ident) (_ : attr) => la)
           (fun (la : bool) (_ : ident) (_ : attr) => la) T t0)) 
        (co_members co)) = legal_alignas_composite cenv ha_env T co.
@@ -1055,7 +1055,7 @@ Lemma aux2:
                    | By_nothing => false
                    end)
                   (fun (la : bool) (t : type) (_ : Z) (_ : attr) =>
-                   (sizeof cenv t mod hardware_alignof ha_env t =? 0) && la)
+                   (Z.eqb (sizeof cenv t mod hardware_alignof ha_env t) 0) && la)
                   (fun (la : bool) (_ : ident) (_ : attr) => la)
                   (fun (la : bool) (_ : ident) (_ : attr) => la)
                   (fun su : struct_or_union =>
@@ -1067,8 +1067,8 @@ Lemma aux2:
                           match l with
                           | nil => true
                           | (_, t, la) :: l' =>
-                              (align pos (alignof cenv t)
-                               mod hardware_alignof ha_env t =? 0) && la &&
+                              (Z.eqb (align pos (alignof cenv t)
+                               mod hardware_alignof ha_env t) 0) && la &&
                               fm (align pos (alignof cenv t) + sizeof cenv t) l'
                           end) 0
                    | Union =>
@@ -1104,7 +1104,7 @@ Proof.
                 | By_value _ => true
                 | _ => false
                 end)
-             (fun la t n a => ((sizeof cenv t mod hardware_alignof ha_env t =? 0) && la))
+             (fun la t n a => ((Z.eqb (sizeof cenv t mod hardware_alignof ha_env t) 0) && la))
              (fun la id a => la)
              (fun la id a => la)
              (fun su =>
@@ -1113,7 +1113,7 @@ Proof.
                    (fix fm (pos: Z) (l: list (ident * type * bool)) : bool :=
                     match l with
                     | nil => true
-                    | (_, t, la) :: l' => (align pos (alignof cenv t) mod hardware_alignof ha_env t =? 0) && la && (fm (align pos (alignof cenv t) + sizeof cenv t) l')
+                    | (_, t, la) :: l' => (Z.eqb (align pos (alignof cenv t) mod hardware_alignof ha_env t) 0) && la && (fm (align pos (alignof cenv t) + sizeof cenv t) l')
                     end) 0
                 | Union =>
                    (fix fm (l: list (ident * type * bool)) : bool :=
@@ -1142,7 +1142,7 @@ Proof.
                 | By_value _ => true
                 | _ => false
                 end)
-             (fun la t n a => ((sizeof cenv t mod hardware_alignof ha_env t =? 0) && la))
+             (fun la t n a => ((Z.eqb (sizeof cenv t mod hardware_alignof ha_env t) 0) && la))
              (fun la id a => la)
              (fun la id a => la)
              (fun su =>
@@ -1151,7 +1151,7 @@ Proof.
                    (fix fm (pos: Z) (l: list (ident * type * bool)) : bool :=
                     match l with
                     | nil => true
-                    | (_, t, la) :: l' => (align pos (alignof cenv t) mod hardware_alignof ha_env t =? 0) && la && (fm (align pos (alignof cenv t) + sizeof cenv t) l')
+                    | (_, t, la) :: l' => (Z.eqb (align pos (alignof cenv t) mod hardware_alignof ha_env t) 0) && la && (fm (align pos (alignof cenv t) + sizeof cenv t) l')
                     end) 0
                 | Union =>
                    (fix fm (l: list (ident * type * bool)) : bool :=
@@ -1187,7 +1187,7 @@ Proof.
   intros.
   unfold is_aligned, is_aligned_aux, legal_alignas_type, hardware_alignof in H.
   destruct H0 as [ch ?].
-  assert ((ofs mod align_chunk ch =? 0) = true) by
+  assert ((Z.eqb (ofs mod align_chunk ch) 0) = true) by
     (destruct t; try solve [inversion H0]; rewrite H0 in H; auto); clear H.
   autorewrite with align in H1.
   eapply align_compatible_rec_by_value; eauto.
