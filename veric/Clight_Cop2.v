@@ -217,24 +217,24 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
   (* To [int] other than [_Bool] *)
   | Tint sz2 si2 _, Tint _ _ _ =>
       if Archi.ptr64 then cast_case_i2i sz2 si2
-      else if intsize_eq sz2 I32 then cast_case_pointer
+      else if intsize_eq sz2 I32 then cast_case_int2int
       else cast_case_i2i sz2 si2
   | Tint sz2 si2 _, Tlong _ _ => cast_case_l2i sz2 si2
   | Tint sz2 si2 _, Tfloat F64 _ => cast_case_f2i sz2 si2
   | Tint sz2 si2 _, Tfloat F32 _ => cast_case_s2i sz2 si2
   | Tint sz2 si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
       if Archi.ptr64 then cast_case_l2i sz2 si2
-      else if intsize_eq sz2 I32 then cast_case_pointer
+      else if intsize_eq sz2 I32 then cast_case_ptr2int
       else cast_case_i2i sz2 si2
   (* To [long] *)
   | Tlong _ _, Tlong _ _ =>
-      if Archi.ptr64 then cast_case_pointer else cast_case_l2l
+      if Archi.ptr64 then cast_case_int2int else cast_case_l2l
   | Tlong _ _, Tint sz1 si1 _ => cast_case_i2l si1
   | Tlong si2 _, Tfloat F64 _ => cast_case_f2l si2
   | Tlong si2 _, Tfloat F32 _ => cast_case_s2l si2
   | Tlong si2 _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
       if Archi.ptr64 
-      then cast_case_pointer 
+      then cast_case_ptr2int
       else cast_case_i2l si2
   (* To [float] *)
   | Tfloat F64 _, Tint sz1 si1 _ => cast_case_i2f si1
@@ -250,20 +250,20 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
       if eqb_type tto int_or_ptr_type 
       then if Archi.ptr64
            then cast_case_default
-           else cast_case_pointer
+           else cast_case_int2ptr
       else if Archi.ptr64
            then cast_case_i2l si 
-           else cast_case_pointer
+           else cast_case_int2ptr
   | Tpointer _ _, Tlong _ _ =>
       if eqb_type tto int_or_ptr_type 
       then if Archi.ptr64
-           then cast_case_pointer
+           then cast_case_int2ptr
            else cast_case_default
       else if Archi.ptr64
-           then cast_case_pointer
+           then cast_case_int2ptr
            else cast_case_l2i I32 Unsigned
-  | Tpointer _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) => 
-       cast_case_pointer
+  | Tpointer _ _, (Tpointer _ _ | Tarray _ _ _ | Tfunction _ _ _) =>
+       cast_case_ptr2ptr
   (* To struct or union types *)
   | Tstruct id2 _, Tstruct id1 _ => cast_case_struct id1 id2
   | Tunion id2 _, Tunion id1 _ => cast_case_union id1 id2
@@ -273,9 +273,15 @@ Definition classify_cast (tfrom tto: type) : classify_cast_cases :=
 
 Arguments classify_cast tfrom tto / .
 
-Definition sem_cast (t1 t2: type): val -> option val := 
+Definition sem_cast (t1 t2: type) (m:mem): val -> option val := 
   match classify_cast t1 t2 with
-  | cast_case_pointer => sem_cast_pointer
+  | cast_case_int2int | cast_case_ptr2ptr | cast_case_ptr2int => sem_cast_pointer
+  | cast_case_int2ptr =>
+    fun (v:val) =>
+      match (Mem.val2ptr v m) with
+      | Some (b, o) => Some (Vptr b o)
+      | None => None
+      end
   | Cop.cast_case_i2i sz2 si2 => sem_cast_i2i sz2 si2
   | Cop.cast_case_f2f => sem_cast_f2f
   | Cop.cast_case_s2s => sem_cast_s2s
@@ -420,15 +426,15 @@ Definition sem_binarith
     (sem_long: signedness -> int64 -> int64 -> option val)
     (sem_float: float -> float -> option val)
     (sem_single: float32 -> float32 -> option val)
-    (t1: type) (t2: type)
+    (t1: type) (t2: type) (m:mem)
    : forall (v1: val) (v2: val), option val := 
   let c := Cop.classify_binarith t1 t2 in
   let t := Cop.binarith_type c in
   match c with
-  | Cop.bin_case_i sg => both_int (sem_int sg) (sem_cast t1 t) (sem_cast t2 t)
-  | Cop.bin_case_f => both_float (sem_float) (sem_cast t1 t) (sem_cast t2 t)
-  | Cop.bin_case_s => both_single (sem_single) (sem_cast t1 t) (sem_cast t2 t)
-  | Cop.bin_case_l sg => both_long (sem_long sg) (sem_cast t1 t) (sem_cast t2 t)
+  | Cop.bin_case_i sg => both_int (sem_int sg) (sem_cast t1 t m) (sem_cast t2 t m)
+  | Cop.bin_case_f => both_float (sem_float) (sem_cast t1 t m) (sem_cast t2 t m)
+  | Cop.bin_case_s => both_single (sem_single) (sem_cast t1 t m) (sem_cast t2 t m)
+  | Cop.bin_case_l sg => both_long (sem_long sg) (sem_cast t1 t m) (sem_cast t2 t m)
   | bin_default => fun _ _ => None
   end.
 
@@ -453,7 +459,7 @@ Definition sem_add_long_ptr {CS: compspecs} ty v1 v2 :=
   else None.
 
 (** *** Addition *)
-Definition sem_add {CS: compspecs} (t1:type) (t2:type):  val->val->option val :=
+Definition sem_add {CS: compspecs} (t1:type) (t2:type) (m:mem):  val->val->option val :=
   match classify_add t1 t2 with
   | add_case_pi ty si =>             (**r pointer plus integer *)
       sem_add_ptr_int ty si
@@ -469,7 +475,7 @@ Definition sem_add {CS: compspecs} (t1:type) (t2:type):  val->val->option val :=
         (fun sg n1 n2 => Some(Vlong(Int64.add n1 n2)))
         (fun n1 n2 => Some(Vfloat(Float.add n1 n2)))
         (fun n1 n2 => Some(Vsingle(Float32.add n1 n2)))
-        t1 t2
+        t1 t2 m
   end.
 
 (** *** Subtraction *)
@@ -518,71 +524,71 @@ Definition sem_sub_pp {CS: compspecs} (ty:type) (v1 v2 : val) : option val :=
       end
       else None.
 
-Definition sem_sub_default (t1 t2:type) (v1 v2 : val) : option val :=
+Definition sem_sub_default (t1 t2:type) (m:mem) (v1 v2 : val) : option val :=
  sem_binarith
         (fun sg n1 n2 => Some(Vint(Int.sub n1 n2)))
         (fun sg n1 n2 => Some(Vlong(Int64.sub n1 n2)))
         (fun n1 n2 => Some(Vfloat(Float.sub n1 n2)))
         (fun n1 n2 => Some(Vsingle(Float32.sub n1 n2)))
-        t1 t2 v1 v2.
+        t1 t2 m v1 v2.
 
-Definition sem_sub {CS: compspecs} (t1:type) (t2:type) : val -> val -> option val :=
+Definition sem_sub {CS: compspecs} (t1:type) (t2:type) (m:mem) : val -> val -> option val :=
   match Cop.classify_sub t1 t2 with
   | Cop.sub_case_pi ty si=> sem_sub_pi  ty si  (**r pointer minus integer *)
   | Cop.sub_case_pl ty => sem_sub_pl  ty  (**r pointer minus long *)
   | Cop.sub_case_pp ty => sem_sub_pp ty       (**r pointer minus pointer *)
-  | sub_default => sem_sub_default t1 t2
+  | sub_default => sem_sub_default t1 t2 m
   end.
 
 (** *** Multiplication, division, modulus *)
 
-Definition sem_mul (t1:type) (t2:type) (v1:val)  (v2: val)  : option val :=
+Definition sem_mul (t1:type) (t2:type) (m:mem) (v1:val)  (v2: val)  : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.mul n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.mul n1 n2)))
     (fun n1 n2 => Some(Vfloat(Float.mul n1 n2)))
     (fun n1 n2 => Some(Vsingle(Float32.mul n1 n2)))
-    t1 t2 v1 v2.
+    t1 t2 m v1 v2.
 
-Definition sem_div (t1:type) (t2:type) (v1:val)  (v2: val) : option val :=
+Definition sem_div (t1:type) (t2:type) (m:mem) (v1:val)  (v2: val) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint (match sg with | Signed => Int.divs | Unsigned => Int.divu end n1 n2)))
     (fun sg n1 n2 => Some(Vlong (match sg with | Signed => Int64.divs | Unsigned => Int64.divu end n1 n2)))
     (fun n1 n2 => Some(Vfloat(Float.div n1 n2)))
     (fun n1 n2 => Some(Vsingle(Float32.div n1 n2)))
-    t1 t2 v1 v2.
+    t1 t2 m v1 v2.
 
-Definition sem_mod (t1:type) (t2:type) (v1:val)  (v2: val) : option val :=
+Definition sem_mod (t1:type) (t2:type) (m:mem) (v1:val)  (v2: val) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint (match sg with | Signed => Int.mods | Unsigned => Int.modu end n1 n2)))
     (fun sg n1 n2 => Some(Vlong (match sg with | Signed => Int64.mods | Unsigned => Int64.modu end n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    t1 t2 v1 v2.
+    t1 t2 m v1 v2.
 
-Definition sem_and (t1:type) (t2:type) (v1:val) (v2: val) : option val :=
+Definition sem_and (t1:type) (t2:type) (m:mem) (v1:val) (v2: val) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.and n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.and n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    t1 t2 v1 v2.
+    t1 t2 m v1 v2.
 
-Definition sem_or (t1:type) (t2:type) (v1:val)  (v2: val) : option val :=
+Definition sem_or (t1:type) (t2:type) (m:mem) (v1:val)  (v2: val) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.or n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.or n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    t1 t2 v1 v2.
+    t1 t2 m v1 v2.
 
-Definition sem_xor (t1:type) (t2:type) (v1:val)  (v2: val) : option val :=
+Definition sem_xor (t1:type) (t2:type) (m:mem) (v1:val)  (v2: val) : option val :=
   sem_binarith
     (fun sg n1 n2 => Some(Vint(Int.xor n1 n2)))
     (fun sg n1 n2 => Some(Vlong(Int64.xor n1 n2)))
     (fun n1 n2 => None)
     (fun n1 n2 => None)
-    t1 t2 v1 v2.
+    t1 t2 m v1 v2.
 
 (** *** Shifts *)
 
@@ -702,7 +708,7 @@ Definition sem_cmp_default c t1 t2 :=
             Some(Val.of_bool(Float32.cmp c n1 n2)))
         t1 t2 .
 
-Definition sem_cmp (c:comparison) (t1: type) (t2: type) : val -> val ->  option val :=
+Definition sem_cmp (c:comparison) (t1: type) (t2: type) (m:mem) : val -> val ->  option val :=
   match Cop.classify_cmp t1 t2 with
   | Cop.cmp_case_pp => 
      if orb (eqb_type t1 int_or_ptr_type) (eqb_type t2 int_or_ptr_type) 
@@ -724,7 +730,7 @@ Definition sem_cmp (c:comparison) (t1: type) (t2: type) : val -> val ->  option 
      if eqb_type t2 int_or_ptr_type
             then (fun _ _ => None)
      else sem_cmp_lp c
-  | Cop.cmp_default => sem_cmp_default c t1 t2
+  | Cop.cmp_default => sem_cmp_default c t1 t2 m
   end.
 
 (** * Combined semantics of unary and binary operators *)
@@ -741,30 +747,30 @@ Definition sem_unary_operation
 (*Removed memory from sem_cmp calls/args*)
 Definition sem_binary_operation'
     {CS: compspecs} (op: Cop.binary_operation)
-    (t1:type) (t2: type) : val -> val -> option val :=
+    (t1:type) (t2: type) (m:mem) : val -> val -> option val :=
   match op with
-  | Cop.Oadd => sem_add t1 t2
-  | Cop.Osub => sem_sub t1 t2
-  | Cop.Omul => sem_mul t1 t2
-  | Cop.Omod => sem_mod t1 t2
-  | Cop.Odiv => sem_div t1 t2
-  | Cop.Oand => sem_and t1 t2
-  | Cop.Oor  => sem_or t1 t2
-  | Cop.Oxor  => sem_xor t1 t2
+  | Cop.Oadd => sem_add t1 t2 m
+  | Cop.Osub => sem_sub t1 t2 m
+  | Cop.Omul => sem_mul t1 t2 m
+  | Cop.Omod => sem_mod t1 t2 m
+  | Cop.Odiv => sem_div t1 t2 m
+  | Cop.Oand => sem_and t1 t2 m
+  | Cop.Oor  => sem_or t1 t2 m
+  | Cop.Oxor  => sem_xor t1 t2 m
   | Cop.Oshl => sem_shl t1 t2
   | Cop.Oshr  => sem_shr t1 t2
-  | Cop.Oeq => sem_cmp Ceq t1 t2
-  | Cop.One => sem_cmp Cne t1 t2
-  | Cop.Olt => sem_cmp Clt t1 t2
-  | Cop.Ogt => sem_cmp Cgt t1 t2
-  | Cop.Ole => sem_cmp Cle t1 t2
-  | Cop.Oge => sem_cmp Cge t1 t2
+  | Cop.Oeq => sem_cmp Ceq t1 t2 m
+  | Cop.One => sem_cmp Cne t1 t2 m
+  | Cop.Olt => sem_cmp Clt t1 t2 m
+  | Cop.Ogt => sem_cmp Cgt t1 t2 m
+  | Cop.Ole => sem_cmp Cle t1 t2 m
+  | Cop.Oge => sem_cmp Cge t1 t2 m
   end.
 
-Definition sem_incrdecr {CS: compspecs} (id: Cop.incr_or_decr) (ty: type)  (valid_pointer : block -> Z -> bool)  (v: val)  :=
+Definition sem_incrdecr {CS: compspecs} (id: Cop.incr_or_decr) (ty: type)  (valid_pointer : block -> Z -> bool) (m:mem) (v: val)  :=
   match id with
-  | Cop.Incr => sem_add ty type_int32s v (Vint Int.one)
-  | Decr => sem_sub ty type_int32s v (Vint Int.one)
+  | Cop.Incr => sem_add ty type_int32s m v (Vint Int.one)
+  | Decr => sem_sub ty type_int32s m v (Vint Int.one)
   end.
 
 (*We can always simplify if the types are known *)
@@ -778,20 +784,20 @@ Arguments Cop.classify_sub ty1 ty2 / .
 Arguments Cop.classify_shift ty1 ty2 / .
 Arguments Cop.classify_cmp ty1 ty2 / .
 Arguments Cop.classify_fun ty / .
-Arguments sem_cast t1 t2 / v : simpl nomatch.
+Arguments sem_cast t1 t2 m / v : simpl nomatch.
 (*moved to Cop2: Arguments bool_val t / v  : simpl nomatch.*)
 Arguments sem_notbool t / v  : simpl nomatch.
 Arguments sem_neg t / v : simpl nomatch.
 Arguments sem_notint t / v : simpl nomatch.
-Arguments sem_add CS t1 t2 / v1 v2 : simpl nomatch.
-Arguments sem_sub CS t1 t2 / v1 v2 : simpl nomatch.
+Arguments sem_add CS t1 t2 m / v1 v2 : simpl nomatch.
+Arguments sem_sub CS t1 t2 m / v1 v2 : simpl nomatch.
 Arguments sem_shift t1 t2 _ _  / v1 v2 : simpl nomatch.
 Arguments sem_shl t1 t2  / v1 v2 : simpl nomatch.
 Arguments sem_shr t1 t2  / v1 v2 : simpl nomatch.
-Arguments sem_cmp c t1 t2 / v1 v2 : simpl nomatch.
+Arguments sem_cmp c t1 t2 m / v1 v2 : simpl nomatch.
 Arguments sem_unary_operation op ty / v : simpl nomatch.
-Arguments sem_binary_operation' CS op t1 t2 / v1 v2 : simpl nomatch.
+Arguments sem_binary_operation' CS op t1 t2 m / v1 v2 : simpl nomatch.
 (*Arguments sem_binary_operation CS op t1 t2 / m v1 v2 : simpl nomatch.*)
-Arguments sem_cmp_default c t1 t2 / v1 v2 : simpl nomatch.
-Arguments sem_binarith sem_int sem_long sem_float sem_single t1 t2 / v1 v2 : simpl nomatch.
+Arguments sem_cmp_default c t1 t2 m / v1 v2 : simpl nomatch.
+Arguments sem_binarith sem_int sem_long sem_float sem_single t1 t2 m / v1 v2 : simpl nomatch.
 Arguments Cop.sem_cast v !t1 !t2 m / .
